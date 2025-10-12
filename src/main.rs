@@ -1,11 +1,20 @@
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder, middleware};
 use actix_files as fs;
-use tera::{Tera, Context};
-use lazy_static::lazy_static;
-use std::env;
-use dotenv::dotenv;
+use actix_web::{get, web, App, HttpResponse, HttpServer, Responder, middleware};
 use actix_web::{middleware::ErrorHandlers, dev::ServiceResponse, http::StatusCode, Result, error};
 use actix_web::middleware::ErrorHandlerResponse;
+use dotenv::dotenv;
+use lazy_static::lazy_static;
+use std::env;
+
+use tera::{Tera, Context};
+
+use crate::db::MongoDb;
+use crate::types::PostStatus;
+use actix_web::HttpRequest;
+
+/// Re-export db module (ensure db/mod.rs `pub use connection::MongoDb;` exists)
+mod db;
+mod types;
 
 lazy_static! {
     static ref TEMPLATES: Tera = {
@@ -20,31 +29,30 @@ lazy_static! {
             }
         }
     };
+
     static ref IS_DEV: bool = {
         env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "development"
     };
 }
 
-// Custom error handler for 500 errors
-fn internal_server_error_handler<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> 
+// ---------- Error Handlers (kept similar to your previous handlers) ----------
+
+fn internal_server_error_handler<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>>
 where
     B: actix_web::body::MessageBody + 'static,
 {
     let error_msg = format!("{:?}", res.response());
     eprintln!("Internal server error: {}", error_msg);
-    
+
     let (req, _res) = res.into_parts();
-    
-    // Show detailed error in development, generic message in production
+
     let body = if *IS_DEV {
-        // In dev mode, try to render dev error template, fallback to inline HTML
         let mut ctx = Context::new();
         ctx.insert("error_details", &error_msg);
-        
+
         match TEMPLATES.render("errors/500-dev.html", &ctx) {
             Ok(html) => html,
             Err(_) => {
-                // Fallback inline HTML if template rendering fails
                 format!(
                     r#"<!DOCTYPE html>
 <html>
@@ -87,11 +95,9 @@ where
             }
         }
     } else {
-        // Production mode - render clean error page
         match TEMPLATES.render("errors/500.html", &Context::new()) {
             Ok(html) => html,
             Err(_) => {
-                // Fallback inline HTML
                 r#"<!DOCTYPE html>
 <html>
 <head>
@@ -115,25 +121,24 @@ where
             }
         }
     };
-    
+
     let new_response = HttpResponse::InternalServerError()
         .content_type("text/html; charset=utf-8")
         .body(body);
-    
+
     Ok(ErrorHandlerResponse::Response(ServiceResponse::new(
         req,
         new_response.map_into_right_body(),
     )))
 }
 
-// Custom error handler for 404 errors
 fn not_found_handler<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>>
 where
     B: actix_web::body::MessageBody + 'static,
 {
     let (req, _res) = res.into_parts();
     let path = req.path().to_string();
-    
+
     let body = if *IS_DEV {
         format!(
             r#"<!DOCTYPE html>
@@ -162,7 +167,7 @@ where
             html_escape::encode_text(&path)
         )
     } else {
-        match TEMPLATES.render("404.html", &Context::new()) {
+        match TEMPLATES.render("errors/404.html", &Context::new()) {
             Ok(html) => html,
             Err(_) => format!(
                 r#"<!DOCTYPE html>
@@ -177,29 +182,42 @@ where
             )
         }
     };
-    
+
     let new_response = HttpResponse::NotFound()
         .content_type("text/html; charset=utf-8")
         .body(body);
-    
+
     Ok(ErrorHandlerResponse::Response(ServiceResponse::new(
         req,
         new_response.map_into_right_body(),
     )))
 }
 
+// -------------------- Handlers --------------------
+
 #[get("/")]
-async fn index() -> Result<HttpResponse> {
+async fn index(db: web::Data<MongoDb>) -> Result<HttpResponse> {
     let mut ctx = Context::new();
     ctx.insert("name", "Wizards Portfolio");
     ctx.insert("title", "Home");
-    
+
+    // Fetch latest 5 published posts
+    let posts = match db::posts::list_posts(&db.database, Some(PostStatus::Published), 5, 0).await {
+        Ok(list) => list,
+        Err(e) => {
+            eprintln!("Error fetching posts: {}", e);
+            Vec::new()
+        }
+    };
+
+    ctx.insert("posts", &posts);
+
     let rendered = TEMPLATES.render("index.html", &ctx)
         .map_err(|e| {
             eprintln!("Template rendering error: {}", e);
             error::ErrorInternalServerError("Template rendering failed")
         })?;
-    
+
     Ok(HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(rendered))
@@ -209,43 +227,66 @@ async fn index() -> Result<HttpResponse> {
 async fn about() -> Result<HttpResponse> {
     let mut ctx = Context::new();
     ctx.insert("title", "About");
-    
+
     let rendered = TEMPLATES.render("about.html", &ctx)
         .map_err(|e| {
             eprintln!("Template rendering error: {}", e);
             error::ErrorInternalServerError("Template rendering failed")
         })?;
-    
+
     Ok(HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(rendered))
 }
 
 #[get("/health")]
-async fn health() -> impl Responder {
+async fn health(db: web::Data<MongoDb>) -> impl Responder {
+    // Try to ping database
+    let db_status = match db.database.run_command(
+        mongodb::bson::doc! { "ping": 1 },
+    ).await {
+        Ok(_) => "connected",
+        Err(err) => {
+            eprintln!("Health ping failed: {}", err);
+            "disconnected"
+        }
+    };
+
     HttpResponse::Ok().json(serde_json::json!({
         "status": "healthy",
-        "timestamp": chrono::Utc::now().to_rfc3339()
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "database": db_status
     }))
 }
 
+// -------------------- Server bootstrap --------------------
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // Initialize environment
+    // Load env
     dotenv().ok();
-    
+
     // Setup logging
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-    
-    // Parse configuration
+
+    // Connect to MongoDB
+    let mongodb = match MongoDb::new().await {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Failed to connect to MongoDB: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Parse config
     let port: u16 = env::var("PORT")
         .unwrap_or_else(|_| "8080".to_string())
         .parse()
         .expect("PORT must be a valid number");
-    
+
     let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let env_mode = if *IS_DEV { "development" } else { "production" };
-    
+
     println!("🚀 Starting server at http://{}:{}", host, port);
     println!("🔧 Environment: {}", env_mode);
     println!("📁 Serving templates from ./templates");
@@ -254,9 +295,17 @@ async fn main() -> std::io::Result<()> {
         println!("⚠️  Development mode: Detailed errors will be shown");
         println!("💡 Set RUST_ENV=production to hide error details");
     }
-    
-    HttpServer::new(|| {
+
+    use std::sync::Arc;
+    let mongodb = Arc::new(match MongoDb::new().await {
+        Ok(m) => m,
+        Err(e) => { eprintln!("Failed to connect to MongoDB: {}", e); std::process::exit(1); }
+    });
+    HttpServer::new(move || {
+        
         App::new()
+            // Share database connection
+            .app_data(web::Data::from(mongodb.clone()))
             // Middleware
             .wrap(middleware::Logger::default())
             .wrap(middleware::Compress::default())
@@ -271,8 +320,8 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             // Static files (CSS, JS, images, etc.)
             .service(fs::Files::new("/static", "./static").show_files_listing())
-            // Favicon
-            .service(fs::Files::new("/favicon.ico", "./static/favicon.ico"))
+            // Favicon route
+
     })
     .bind((host.as_str(), port))?
     .run()
