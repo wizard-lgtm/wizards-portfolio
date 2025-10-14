@@ -1,5 +1,6 @@
 use actix_files as fs;
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder, middleware};
+use actix_web::dev::Service;
+use actix_web::{get, middleware, web, App, HttpMessage, HttpResponse, HttpServer, Responder};
 use actix_web::{middleware::ErrorHandlers, dev::ServiceResponse, http::StatusCode, Result, error};
 use actix_web::middleware::ErrorHandlerResponse;
 use dotenv::dotenv;
@@ -20,6 +21,10 @@ mod routes;
 mod db;
 mod types;
 use routes::{pages, api};
+mod logging;
+use logging::{LoggerDb, RequestLogger, PerformanceTracker};
+use actix_web::middleware::Logger;
+
 
 // -------------------- Server bootstrap --------------------
 #[actix_web::main]
@@ -63,6 +68,8 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            .app_data(web::Data::new(LoggerDb::new(&*mongodb)))
+            .wrap(Logger::default())
             // Share database connection
             .app_data(web::Data::from(mongodb.clone()))
             // Middleware
@@ -73,6 +80,22 @@ async fn main() -> std::io::Result<()> {
                     .handler(StatusCode::INTERNAL_SERVER_ERROR, internal_server_error_handler)
                     .handler(StatusCode::NOT_FOUND, not_found_handler)
             )
+            .wrap_fn(|req, srv| {
+            let request_id = RequestLogger::create_request_id();
+            let start = std::time::Instant::now();
+            
+            req.extensions_mut().insert(request_id.clone());
+            
+            let fut = srv.call(req);
+            
+            async move {
+                let res = fut.await?;
+                let elapsed = start.elapsed().as_millis() as u64;
+                
+                // Log the response with timing
+                Ok(res)
+            }
+        })
             // Routes
             .service(pages::index)
             .service(pages::about)
