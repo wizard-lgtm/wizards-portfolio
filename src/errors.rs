@@ -3,20 +3,49 @@ use actix_web::{dev::ServiceResponse, http::StatusCode, middleware::ErrorHandler
 use tera::Context;
 use crate::{TEMPLATES, IS_DEV};
 
-// ---------- Error Handlers (kept similar to your previous handlers) ----------
+// ---------- Error Handlers ----------
 
 pub fn internal_server_error_handler<B>(res: ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>>
 where
     B: actix_web::body::MessageBody + 'static,
 {
-    let error_msg = format!("{:?}", res.response());
-    eprintln!("Internal server error: {}", error_msg);
+    let status = res.status();
+    let real_error = res.response().error();
+    
+    // Get a cleaner message - extract the actual error string properly
+    let error_message = if let Some(err) = real_error {
+        err.to_string()
+    } else {
+        status.canonical_reason().unwrap_or("Unknown error").to_string()
+    };
+    
+    eprintln!("Internal server error: {}", error_message);
 
     let (req, _res) = res.into_parts();
 
+    // Detect if JSON should be returned instead of HTML
+    let is_json_request = 
+        req.path().starts_with("/api")
+        || req.headers().get("Accept").map_or(false, |h| {
+            h.to_str().map(|v| v.contains("application/json")).unwrap_or(false)
+        });
+
+    if is_json_request {
+        let json_response = HttpResponse::InternalServerError().json(serde_json::json!({
+            "status": "error",
+            "message": status.canonical_reason().unwrap_or("Internal Server Error"),
+            "details": if *IS_DEV { Some(error_message.as_str()) } else { None }
+        }));
+
+        return Ok(ErrorHandlerResponse::Response(ServiceResponse::new(
+            req,
+            json_response.map_into_right_body(),
+        )));
+    }
+
     let body = if *IS_DEV {
         let mut ctx = Context::new();
-        ctx.insert("error_details", &error_msg);
+        ctx.insert("error_details", &error_message);
 
         match TEMPLATES.render("errors/500-dev.html", &ctx) {
             Ok(html) => html,
@@ -58,7 +87,7 @@ where
     </div>
 </body>
 </html>"#,
-                    html_escape::encode_text(&error_msg)
+                    html_escape::encode_text(&error_message)
                 )
             }
         }
@@ -107,6 +136,26 @@ where
     let (req, _res) = res.into_parts();
     let path = req.path().to_string();
 
+    // Detect if JSON should be returned instead of HTML
+    let is_json_request = 
+        req.path().starts_with("/api")
+        || req.headers().get("Accept").map_or(false, |h| {
+            h.to_str().map(|v| v.contains("application/json")).unwrap_or(false)
+        });
+
+    if is_json_request {
+        let json_response = HttpResponse::NotFound().json(serde_json::json!({
+            "status": "error",
+            "message": "Not Found",
+            "details": if *IS_DEV { Some(path.as_str()) } else { None }
+        }));
+
+        return Ok(ErrorHandlerResponse::Response(ServiceResponse::new(
+            req,
+            json_response.map_into_right_body(),
+        )));
+    }
+
     let body = if *IS_DEV {
         format!(
             r#"<!DOCTYPE html>
@@ -137,7 +186,7 @@ where
     } else {
         match TEMPLATES.render("errors/404.html", &Context::new()) {
             Ok(html) => html,
-            Err(_) => format!(
+            Err(_) => {
                 r#"<!DOCTYPE html>
 <html>
 <head><title>404 Not Found</title></head>
@@ -146,8 +195,8 @@ where
     <p>The page you're looking for doesn't exist.</p>
     <p><a href="/">Go Home</a></p>
 </body>
-</html>"#
-            )
+</html>"#.to_string()
+            }
         }
     };
 
