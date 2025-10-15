@@ -5,7 +5,8 @@ use actix_web::{middleware::ErrorHandlers, http::StatusCode};
 use dotenv::dotenv;
 use std::env;
 
-mod errors;
+mod middlewares;
+use middlewares::errors;
 use errors::{internal_server_error_handler, not_found_handler};
 use crate::db::connect_with_retry;
 
