@@ -1,5 +1,5 @@
 
-use actix_web::{error, get, web, HttpResponse, Result};
+use actix_web::{error, get, web, HttpResponse, Result, Scope};
 use tera::Context;
 use crate::{db, errors, };
 use crate::db::MongoDb;
@@ -51,4 +51,11 @@ pub async fn about() -> Result<HttpResponse> {
     Ok(HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(rendered))
+}
+
+
+pub fn pages_scope() -> Scope {
+    web::scope("")
+        .service(index)
+        .service(about)
 }
