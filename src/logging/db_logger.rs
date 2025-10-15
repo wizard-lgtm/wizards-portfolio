@@ -1,55 +1,66 @@
 use mongodb::bson::doc;
+use futures::StreamExt;
+use std::sync::Arc;
 use crate::db::MongoDb;
 use crate::logging::request_logger::RequestLog;
 use crate::logging::{RequestLogger, ClickLog, SystemPerformanceLog};
+use futures::TryStreamExt;
 
-pub struct LoggerDb;
+pub struct LoggerDb {
+    mongo_db: Arc<MongoDb>,
+}
 
 impl LoggerDb {
-    pub fn log_request_collection(mongo_db: &MongoDb) -> mongodb::Collection<RequestLog> {
-        mongo_db.database.collection::<RequestLog>("request_logs")
+    pub fn new(mongo_db: &Arc<MongoDb>) -> Self {
+        Self {
+            mongo_db: Arc::clone(mongo_db),
+        }
     }
 
-    pub fn log_click_collection(mongo_db: &MongoDb) -> mongodb::Collection<ClickLog> {
-        mongo_db.database.collection::<ClickLog>("click_logs")
+    fn log_request_collection(&self) -> mongodb::Collection<RequestLog> {
+        self.mongo_db.database.collection::<RequestLog>("request_logs")
     }
 
-    pub fn log_performance_collection(mongo_db: &MongoDb) -> mongodb::Collection<SystemPerformanceLog> {
-        mongo_db.database.collection::<SystemPerformanceLog>("performance_logs")
+    fn log_click_collection(&self) -> mongodb::Collection<ClickLog> {
+        self.mongo_db.database.collection::<ClickLog>("click_logs")
+    }
+
+    fn log_performance_collection(&self) -> mongodb::Collection<SystemPerformanceLog> {
+        self.mongo_db.database.collection::<SystemPerformanceLog>("performance_logs")
     }
 
     pub async fn log_request(
-        mongo_db: &MongoDb,
+        &self,
         log: RequestLog,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let collection = Self::log_request_collection(mongo_db);
+        let collection = self.log_request_collection();
         collection.insert_one(&log).await?;
         Ok(())
     }
 
     pub async fn log_click(
-        mongo_db: &MongoDb,
+        &self,
         log: ClickLog,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let collection = Self::log_click_collection(mongo_db);
+        let collection = self.log_click_collection();
         collection.insert_one(&log).await?;
         Ok(())
     }
 
     pub async fn log_performance(
-        mongo_db: &MongoDb,
+        &self,
         log: SystemPerformanceLog,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let collection = Self::log_performance_collection(mongo_db);
+        let collection = self.log_performance_collection();
         collection.insert_one(&log).await?;
         Ok(())
     }
 
     pub async fn get_request_stats_by_date(
-        mongo_db: &MongoDb,
+        &self,
         date: &str, // Format: "2024-01-15"
     ) -> Result<mongodb::bson::Document, Box<dyn std::error::Error>> {
-        let collection = Self::log_request_collection(mongo_db);
+        let collection = self.log_request_collection();
         
         let pipeline = vec![
             doc! {
@@ -62,7 +73,7 @@ impl LoggerDb {
             },
             doc! {
                 "$group": {
-                    "_id": None,
+                    "_id": mongodb::bson::Bson::Null,
                     "total_requests": { "$sum": 1 },
                     "avg_response_time": { "$avg": "$response_time_ms" },
                     "unique_ips": { "$addToSet": "$ip_address" },
@@ -72,18 +83,18 @@ impl LoggerDb {
 
         let mut cursor = collection.aggregate(pipeline).await?;
         
-        if let Some(doc) = cursor.next().await {
-            Ok(doc?)
+        if let Some(result) = cursor.try_next().await? {
+            Ok(result)
         } else {
             Ok(doc! {})
         }
     }
 
     pub async fn get_click_stats(
-        mongo_db: &MongoDb,
+        &self,
         ip: Option<&str>,
     ) -> Result<Vec<mongodb::bson::Document>, Box<dyn std::error::Error>> {
-        let collection = Self::log_click_collection(mongo_db);
+        let collection = self.log_click_collection();
         
         let filter = match ip {
             Some(ip_addr) => doc! { "ip_address": ip_addr },
@@ -105,17 +116,17 @@ impl LoggerDb {
         let mut cursor = collection.aggregate(pipeline).await?;
         let mut results = Vec::new();
         
-        while let Some(doc) = cursor.next().await {
-            results.push(doc?);
+        while let Some(result) = cursor.try_next().await? {
+            results.push(result);
         }
 
         Ok(results)
     }
 
     pub async fn get_unique_ips(
-        mongo_db: &MongoDb,
+        &self,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        let collection = Self::log_request_collection(mongo_db);
+        let collection = self.log_request_collection();
         
         let pipeline = vec![
             doc! {
@@ -128,11 +139,9 @@ impl LoggerDb {
         let mut cursor = collection.aggregate(pipeline).await?;
         let mut ips = Vec::new();
         
-        while let Some(doc) = cursor.next().await {
-            if let Ok(doc) = doc {
-                if let Some(ip) = doc.get_str("_id").ok() {
-                    ips.push(ip.to_string());
-                }
+        while let Some(result) = cursor.try_next().await? {
+            if let Some(ip) = result.get_str("_id").ok() {
+                ips.push(ip.to_string());
             }
         }
 
@@ -140,26 +149,26 @@ impl LoggerDb {
     }
 
     pub async fn get_requests_by_ip(
-        mongo_db: &MongoDb,
+        &self,
         ip: &str,
     ) -> Result<Vec<RequestLog>, Box<dyn std::error::Error>> {
-        let collection = Self::log_request_collection(mongo_db);
+        let collection = self.log_request_collection();
         let filter = doc! { "ip_address": ip };
         
         let mut cursor = collection.find(filter).await?;
         let mut results = Vec::new();
         
-        while let Some(doc) = cursor.next().await {
-            results.push(doc?);
+        while let Some(result) = cursor.try_next().await? {
+            results.push(result);
         }
 
         Ok(results)
     }
 
     pub async fn get_total_requests_by_day(
-        mongo_db: &MongoDb,
+        &self,
     ) -> Result<Vec<mongodb::bson::Document>, Box<dyn std::error::Error>> {
-        let collection = Self::log_request_collection(mongo_db);
+        let collection = self.log_request_collection();
         
         let pipeline = vec![
             doc! {
@@ -180,17 +189,17 @@ impl LoggerDb {
         let mut cursor = collection.aggregate(pipeline).await?;
         let mut results = Vec::new();
         
-        while let Some(doc) = cursor.next().await {
-            results.push(doc?);
+        while let Some(result) = cursor.try_next().await? {
+            results.push(result);
         }
 
         Ok(results)
     }
 
     pub async fn get_total_clicks_by_day(
-        mongo_db: &MongoDb,
+        &self,
     ) -> Result<Vec<mongodb::bson::Document>, Box<dyn std::error::Error>> {
-        let collection = Self::log_click_collection(mongo_db);
+        let collection = self.log_click_collection();
         
         let pipeline = vec![
             doc! {
@@ -210,8 +219,8 @@ impl LoggerDb {
         let mut cursor = collection.aggregate(pipeline).await?;
         let mut results = Vec::new();
         
-        while let Some(doc) = cursor.next().await {
-            results.push(doc?);
+        while let Some(result) = cursor.try_next().await? {
+            results.push(result);
         }
 
         Ok(results)

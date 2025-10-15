@@ -68,7 +68,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(LoggerDb::new(&*mongodb)))
+            .app_data(web::Data::new(LoggerDb::new(&mongodb)))
             .wrap(Logger::default())
             // Share database connection
             .app_data(web::Data::from(mongodb.clone()))
