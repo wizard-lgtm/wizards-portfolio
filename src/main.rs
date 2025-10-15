@@ -67,8 +67,14 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(LoggerDb::new(&mongodb)))
             .app_data(web::Data::from(mongodb.clone()))
-            
-            // Middleware
+
+            .service(api_scope())
+            .service(logs_scope())
+            .service(pages_scope())
+
+            .service(fs::Files::new("/static", "./static").show_files_listing())
+
+            // ✅ Middleware AFTER routes
             .wrap(Logger::default())
             .wrap(middleware::Compress::default())
             .wrap(
@@ -76,6 +82,7 @@ async fn main() -> std::io::Result<()> {
                     .handler(StatusCode::INTERNAL_SERVER_ERROR, internal_server_error_handler)
                     .handler(StatusCode::NOT_FOUND, not_found_handler)
             )
+
             .wrap_fn(|req, srv| {
                 let request_id = RequestLogger::create_request_id();
                 let start = std::time::Instant::now();
