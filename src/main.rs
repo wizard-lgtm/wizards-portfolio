@@ -1,19 +1,13 @@
 use actix_files as fs;
 use actix_web::dev::Service;
-use actix_web::{get, middleware, web, App, HttpMessage, HttpResponse, HttpServer, Responder};
-use actix_web::{middleware::ErrorHandlers, dev::ServiceResponse, http::StatusCode, Result, error};
-use actix_web::middleware::ErrorHandlerResponse;
+use actix_web::{middleware, web, App, HttpMessage, HttpServer};
+use actix_web::{middleware::ErrorHandlers, http::StatusCode};
 use dotenv::dotenv;
-use lazy_static::lazy_static;
 use std::env;
-use std::time::Duration;
-use tokio::time::sleep;
 
 mod errors;
 use errors::{internal_server_error_handler, not_found_handler};
-use tera::{Tera, Context};
-use crate::db::{connect_with_retry, MongoDb};
-use crate::types::PostStatus;
+use crate::db::{connect_with_retry};
 mod config;
 use config::{TEMPLATES, IS_DEV};
 /// Re-export db module (ensure db/mod.rs `pub use connection::MongoDb;` exists)
@@ -22,7 +16,7 @@ mod db;
 mod types;
 use routes::{pages, api};
 mod logging;
-use logging::{LoggerDb, RequestLogger, PerformanceTracker};
+use logging::{LoggerDb, RequestLogger};
 use actix_web::middleware::Logger;
 
 
