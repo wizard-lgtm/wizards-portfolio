@@ -1,4 +1,4 @@
-use actix_web::{get, web, Responder, HttpResponse, Scope};
+use actix_web::{get, web, Responder, HttpResponse};
 use crate::db::MongoDb;
 
 #[get("/health")]
@@ -22,9 +22,4 @@ pub async fn health(db: web::Data<MongoDb>) -> impl Responder {
             }))
         }
     }
-}
-
-pub fn api_scope() -> Scope {
-    web::scope("/api")
-        .service(health)
 }
