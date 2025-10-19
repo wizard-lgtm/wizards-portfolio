@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestLog {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: mongodb::bson::DateTime,
     pub request_id: String,
     pub ip_address: String,
     pub user_agent: String,
@@ -23,7 +22,7 @@ pub struct RequestLog {
 pub struct ClickLog {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: mongodb::bson::DateTime,
     pub request_id: String,
     pub ip_address: String,
     pub user_agent: String,
@@ -36,7 +35,7 @@ pub struct ClickLog {
 pub struct SystemPerformanceLog {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: mongodb::bson::DateTime,
     pub render_time_ms: f64,
     pub memory_usage_mb: f64,
     pub cpu_usage_percent: f64,

@@ -2,12 +2,14 @@ use actix_files as fs;
 use actix_web::dev::Service;
 use actix_web::{middleware, web, App, HttpMessage, HttpServer};
 use actix_web::{middleware::ErrorHandlers, http::StatusCode};
+use actix_web::middleware::NormalizePath;
 use dotenv::dotenv;
 use std::env;
 
 mod middlewares;
 use middlewares::errors;
 use errors::{internal_server_error_handler, not_found_handler};
+use middlewares::request_logging::RequestLogging;
 use crate::db::connect_with_retry;
 
 mod config;
@@ -69,13 +71,17 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(LoggerDb::new(&mongodb)))
             .app_data(web::Data::from(mongodb.clone()))
 
+            // Routes - organized by scope
             .service(api_scope())
             .service(logs_scope())
             .service(pages_scope())
 
+            // Static files (CSS, JS, images, etc.)
             .service(fs::Files::new("/static", "./static").show_files_listing())
-
-            // ✅ Middleware AFTER routes
+            
+            // Middleware (order matters - applied in reverse order)
+            .wrap(RequestLogging) // Our custom request logging
+            .wrap(NormalizePath::trim())
             .wrap(Logger::default())
             .wrap(middleware::Compress::default())
             .wrap(
@@ -83,31 +89,6 @@ async fn main() -> std::io::Result<()> {
                     .handler(StatusCode::INTERNAL_SERVER_ERROR, internal_server_error_handler)
                     .handler(StatusCode::NOT_FOUND, not_found_handler)
             )
-
-            .wrap_fn(|req, srv| {
-                let request_id = RequestLogger::create_request_id();
-                let start = std::time::Instant::now();
-                
-                req.extensions_mut().insert(request_id.clone());
-                
-                let fut = srv.call(req);
-                
-                async move {
-                    let res = fut.await?;
-                    let elapsed = start.elapsed().as_millis() as u64;
-                    
-                    // Log the response with timing
-                    Ok(res)
-                }
-            })
-            
-            // Routes - organized by scope
-            .service(api_scope())
-            .service(logs_scope())
-            .service(pages_scope())
-            
-            // Static files (CSS, JS, images, etc.)
-            .service(fs::Files::new("/static", "./static").show_files_listing())
     })
     .bind((host.as_str(), port))?
     .run()

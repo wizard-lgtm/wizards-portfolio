@@ -172,11 +172,22 @@ impl LoggerDb {
         
         let pipeline = vec![
             doc! {
+                "$addFields": {
+                    "timestamp_date": {
+                        "$cond": [
+                            { "$eq": [{ "$type": "$timestamp" }, "date"] },
+                            "$timestamp",
+                            { "$dateFromString": { "dateString": "$timestamp" } }
+                        ]
+                    }
+                }
+            },
+            doc! {
                 "$group": {
                     "_id": {
                         "$dateToString": {
                             "format": "%Y-%m-%d",
-                            "date": "$timestamp"
+                            "date": "$timestamp_date"
                         }
                     },
                     "total_requests": { "$sum": 1 },
@@ -203,11 +214,22 @@ impl LoggerDb {
         
         let pipeline = vec![
             doc! {
+                "$addFields": {
+                    "timestamp_date": {
+                        "$cond": [
+                            { "$eq": [{ "$type": "$timestamp" }, "date"] },
+                            "$timestamp",
+                            { "$dateFromString": { "dateString": "$timestamp" } }
+                        ]
+                    }
+                }
+            },
+            doc! {
                 "$group": {
                     "_id": {
                         "$dateToString": {
                             "format": "%Y-%m-%d",
-                            "date": "$timestamp"
+                            "date": "$timestamp_date"
                         }
                     },
                     "total_clicks": { "$sum": 1 }

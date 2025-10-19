@@ -2,6 +2,7 @@
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
+use mongodb::bson::DateTime as BsonDateTime;
 use super::SystemPerformanceLog;
 
 #[derive(Debug, Clone)]
@@ -19,7 +20,6 @@ impl PerformanceTracker {
     pub fn elapsed_ms(&self) -> u64 {
         self.start_time.elapsed().as_millis() as u64
     }
-
     pub fn create_system_log(
         render_time_ms: f64,
         active_connections: usize,
@@ -27,7 +27,7 @@ impl PerformanceTracker {
     ) -> SystemPerformanceLog {
         SystemPerformanceLog {
             id: None,
-            timestamp: Utc::now(),
+            timestamp: BsonDateTime::from_millis(Utc::now().timestamp_millis()),
             render_time_ms,
             memory_usage_mb: 0.0,
             cpu_usage_percent: 0.0,
@@ -36,6 +36,7 @@ impl PerformanceTracker {
         }
     }
 }
+
 
 impl Default for PerformanceTracker {
     fn default() -> Self {

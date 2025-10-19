@@ -1,7 +1,6 @@
 use actix_web::{post, web, HttpResponse, Responder, HttpRequest};
 use serde::{Deserialize, Serialize};
 use crate::logging::{request_logger::RequestLog, ClickLog, LoggerDb, RequestLogger};
-use chrono::Utc;
 
 #[derive(Debug, Deserialize)]
 pub struct ClickLogRequest {
@@ -40,7 +39,7 @@ pub async fn log_click(
     
     let click_log = ClickLog {
         id: None,
-        timestamp: Utc::now(),
+        timestamp: mongodb::bson::DateTime::now(),
         request_id,
         ip_address: ip,
         user_agent,
@@ -77,7 +76,7 @@ pub async fn log_request(
     
     let request_log = RequestLog {
         id: None,
-        timestamp: Utc::now(),
+        timestamp: mongodb::bson::DateTime::now(),
         request_id,
         ip_address: ip,
         user_agent,

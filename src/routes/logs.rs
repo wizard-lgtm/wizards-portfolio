@@ -1,5 +1,5 @@
 use actix_web::{get, web, HttpResponse, Responder, Scope};
-use crate::config::TEMPLATES;
+use crate::config::{TEMPLATES, IS_DEV};
 use crate::logging::LoggerDb;
 use tera::Context;
 
@@ -18,13 +18,23 @@ pub async fn view_requests(
                 Ok(html) => HttpResponse::Ok().content_type("text/html").body(html),
                 Err(e) => {
                     eprintln!("Template error: {}", e);
-                    HttpResponse::InternalServerError().body("Template rendering error")
+                    let error_message = if *IS_DEV {
+                        format!("Template error: {}", e)
+                    } else {
+                        "Template rendering error".to_string()
+                    };
+                    HttpResponse::InternalServerError().body(error_message)
                 }
             }
         }
         Err(e) => {
             eprintln!("Database error: {}", e);
-            HttpResponse::InternalServerError().body("Failed to fetch logs")
+            let error_message = if *IS_DEV {
+                format!("Database error: {}", e)
+            } else {
+                "Failed to fetch logs".to_string()
+            };
+            HttpResponse::InternalServerError().body(error_message)
         }
     }
 }
@@ -44,19 +54,29 @@ pub async fn view_clicks(
                 Ok(html) => HttpResponse::Ok().content_type("text/html").body(html),
                 Err(e) => {
                     eprintln!("Template error: {}", e);
-                    HttpResponse::InternalServerError().body("Template rendering error")
+                    let error_message = if *IS_DEV {
+                        format!("Template error: {}", e)
+                    } else {
+                        "Template rendering error".to_string()
+                    };
+                    HttpResponse::InternalServerError().body(error_message)
                 }
             }
         }
         Err(e) => {
             eprintln!("Database error: {}", e);
-            HttpResponse::InternalServerError().body("Failed to fetch click stats")
+            let error_message = if *IS_DEV {
+                format!("Database error: {}", e)
+            } else {
+                "Failed to fetch click stats".to_string()
+            };
+            HttpResponse::InternalServerError().body(error_message)
         }
     }
 }
 
 /// View logs dashboard
-#[get("/")]
+#[get("")]
 pub async fn logs_dashboard(
     logger_db: web::Data<LoggerDb>,
 ) -> impl Responder {
@@ -102,13 +122,23 @@ pub async fn view_logs_by_ip(
                 Ok(html) => HttpResponse::Ok().content_type("text/html").body(html),
                 Err(e) => {
                     eprintln!("Template error: {}", e);
-                    HttpResponse::InternalServerError().body("Template rendering error")
+                    let error_message = if *IS_DEV {
+                        format!("Template error: {}", e)
+                    } else {
+                        "Template rendering error".to_string()
+                    };
+                    HttpResponse::InternalServerError().body(error_message)
                 }
             }
         }
         Err(e) => {
             eprintln!("Database error: {}", e);
-            HttpResponse::InternalServerError().body("Failed to fetch logs")
+            let error_message = if *IS_DEV {
+                format!("Database error: {}", e)
+            } else {
+                "Failed to fetch logs".to_string()
+            };
+            HttpResponse::InternalServerError().body(error_message)
         }
     }
 }
@@ -132,13 +162,23 @@ pub async fn view_logs_by_date(
                 Ok(html) => HttpResponse::Ok().content_type("text/html").body(html),
                 Err(e) => {
                     eprintln!("Template error: {}", e);
-                    HttpResponse::InternalServerError().body("Template rendering error")
+                    let error_message = if *IS_DEV {
+                        format!("Template error: {}", e)
+                    } else {
+                        "Template rendering error".to_string()
+                    };
+                    HttpResponse::InternalServerError().body(error_message)
                 }
             }
         }
         Err(e) => {
             eprintln!("Database error: {}", e);
-            HttpResponse::InternalServerError().body("Failed to fetch stats")
+            let error_message = if *IS_DEV {
+                format!("Database error: {}", e)
+            } else {
+                "Failed to fetch stats".to_string()
+            };
+            HttpResponse::InternalServerError().body(error_message)
         }
     }
 }
