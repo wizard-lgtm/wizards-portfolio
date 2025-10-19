@@ -247,4 +247,132 @@ impl LoggerDb {
 
         Ok(results)
     }
+
+    pub async fn get_total_request_count(
+        &self,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let collection = self.log_request_collection();
+        let count = collection.count_documents(doc! {}).await?;
+        Ok(count)
+    }
+
+    pub async fn get_total_click_count(
+        &self,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let collection = self.log_click_collection();
+        let count = collection.count_documents(doc! {}).await?;
+        Ok(count)
+    }
+
+    pub async fn get_all_requests(
+        &self,
+        limit: Option<i64>,
+        skip: Option<u64>,
+    ) -> Result<Vec<RequestLog>, Box<dyn std::error::Error>> {
+        let collection = self.log_request_collection();
+        
+        let mut find_options = mongodb::options::FindOptions::default();
+        find_options.sort = Some(doc! { "timestamp": -1 });
+        if let Some(lim) = limit {
+            find_options.limit = Some(lim);
+        }
+        if let Some(sk) = skip {
+            find_options.skip = Some(sk);
+        }
+        
+        let mut cursor = collection.find(doc! {}).with_options(find_options).await?;
+        let mut results = Vec::new();
+        
+        while let Some(result) = cursor.try_next().await? {
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+
+    pub async fn delete_requests_by_date(
+        &self,
+        date: &str,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let collection = self.log_request_collection();
+        
+        // Match documents where timestamp starts with the date
+        let result = collection.delete_many(doc! {
+            "timestamp": {
+                "$regex": format!("^{}", date),
+                "$options": "i"
+            }
+        }).await?;
+        
+        Ok(result.deleted_count)
+    }
+
+    pub async fn delete_clicks_by_date(
+        &self,
+        date: &str,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let collection = self.log_click_collection();
+        
+        let result = collection.delete_many(doc! {
+            "timestamp": {
+                "$regex": format!("^{}", date),
+                "$options": "i"
+            }
+        }).await?;
+        
+        Ok(result.deleted_count)
+    }
+
+    pub async fn search_requests(
+        &self,
+        search_query: &str,
+    ) -> Result<Vec<RequestLog>, Box<dyn std::error::Error>> {
+        let collection = self.log_request_collection();
+        
+        let filter = doc! {
+            "$or": [
+                { "path": { "$regex": search_query, "$options": "i" } },
+                { "ip_address": { "$regex": search_query, "$options": "i" } },
+                { "method": { "$regex": search_query, "$options": "i" } },
+            ]
+        };
+        
+        let mut find_options = mongodb::options::FindOptions::default();
+        find_options.sort = Some(doc! { "timestamp": -1 });
+        find_options.limit = Some(100);
+        
+        let mut cursor = collection.find(filter).with_options(find_options).await?;
+        let mut results = Vec::new();
+        
+        while let Some(result) = cursor.try_next().await? {
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+
+    pub async fn get_requests_by_date(
+        &self,
+        date: &str,
+    ) -> Result<Vec<RequestLog>, Box<dyn std::error::Error>> {
+        let collection = self.log_request_collection();
+        
+        let mut find_options = mongodb::options::FindOptions::default();
+        find_options.sort = Some(doc! { "timestamp": -1 });
+        
+        let mut cursor = collection.find(doc! {
+            "timestamp": {
+                "$regex": format!("^{}", date),
+                "$options": "i"
+            }
+        }).with_options(find_options).await?;
+        
+        let mut results = Vec::new();
+        
+        while let Some(result) = cursor.try_next().await? {
+            results.push(result);
+        }
+
+        Ok(results)
+    }
 }

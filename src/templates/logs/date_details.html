@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ page_title }}</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 2rem;
+      }
+      .container {
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+      .header {
+        background: white;
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+      }
+      h1 {
+        color: #333;
+        margin-bottom: 0.5rem;
+      }
+      .nav-links {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1rem;
+        flex-wrap: wrap;
+      }
+      .nav-links a {
+        color: #667eea;
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        border: 2px solid #667eea;
+        border-radius: 5px;
+        transition: all 0.3s;
+      }
+      .nav-links a:hover {
+        background: #667eea;
+        color: white;
+      }
+      .action-bar {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .delete-button {
+        padding: 0.75rem 1.5rem;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+      .delete-button:hover {
+        background: #c82333;
+      }
+      .content-section {
+        background: white;
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+        font-size: 0.9rem;
+      }
+      th,
+      td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+      }
+      th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #333;
+        position: sticky;
+        top: 0;
+      }
+      tr:hover {
+        background: #f8f9fa;
+      }
+      .no-data {
+        text-align: center;
+        padding: 3rem;
+        color: #999;
+        font-size: 1.1rem;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 3px;
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+      .badge-success {
+        background: #28a745;
+        color: white;
+      }
+      .badge-error {
+        background: #dc3545;
+        color: white;
+      }
+      .badge-warning {
+        background: #ffc107;
+        color: #333;
+      }
+      .badge-info {
+        background: #17a2b8;
+        color: white;
+      }
+      .method {
+        font-weight: 600;
+      }
+      .method-get {
+        color: #28a745;
+      }
+      .method-post {
+        color: #007bff;
+      }
+      .method-delete {
+        color: #dc3545;
+      }
+      .method-put {
+        color: #ffc107;
+      }
+      .stats-info {
+        color: #666;
+        font-size: 1.1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>📅 {{ page_title }}</h1>
+        <div class="nav-links">
+          <a href="/logs">Dashboard</a>
+          <a href="/logs/requests">Request Summary</a>
+          <a href="/logs/requests/all">All Requests</a>
+          <a href="/logs/clicks">Click Stats</a>
+          <a href="/">Home</a>
+        </div>
+      </div>
+
+      <div class="action-bar">
+        <div class="stats-info">
+          Total requests on {{ date }}: <strong>{{ total_count }}</strong>
+        </div>
+        <button class="delete-button" onclick="deleteDate()">
+          🗑️ Delete All Logs from {{ date }}
+        </button>
+      </div>
+
+      <div class="content-section">
+        {% if logs and logs | length > 0 %}
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Method</th>
+              <th>Path</th>
+              <th>Status</th>
+              <th>IP</th>
+              <th>User Agent</th>
+              <th>Response Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in logs %}
+            <tr>
+              <td style="white-space: nowrap;">{{ log.timestamp }}</td>
+              <td>
+                <span class="method method-{{ log.method | lower }}">
+                  {{ log.method }}
+                </span>
+              </td>
+              <td style="word-break: break-all;">{{ log.path }}</td>
+              <td>
+                {% if log.status_code >= 200 and log.status_code < 300 %}
+                  <span class="badge badge-success">{{ log.status_code }}</span>
+                {% elif log.status_code >= 300 and log.status_code < 400 %}
+                  <span class="badge badge-info">{{ log.status_code }}</span>
+                {% elif log.status_code >= 400 and log.status_code < 500 %}
+                  <span class="badge badge-warning">{{ log.status_code }}</span>
+                {% else %}
+                  <span class="badge badge-error">{{ log.status_code }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="/logs/ip/{{ log.ip_address }}" style="color: #667eea; text-decoration: none;">
+                  {{ log.ip_address }}
+                </a>
+              </td>
+              <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ log.user_agent }}">
+                {{ log.user_agent }}
+              </td>
+              <td>{{ log.response_time_ms }}ms</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="no-data">No request logs found for {{ date }}</div>
+        {% endif %}
+      </div>
+    </div>
+    <script>
+      async function deleteDate() {
+        if (!confirm(`Are you sure you want to delete all {{ total_count }} logs from {{ date }}? This action cannot be undone.`)) {
+          return;
+        }
+        
+        try {
+          const response = await fetch(`/logs/date/{{ date }}`, {
+            method: 'DELETE',
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            alert(data.message);
+            window.location.href = '/logs';
+          } else {
+            alert('Failed to delete logs: ' + data.message);
+          }
+        } catch (error) {
+          alert('Error deleting logs: ' + error.message);
+        }
+      }
+    </script>
+  </body>
+</html>

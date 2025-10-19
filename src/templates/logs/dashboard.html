@@ -109,7 +109,8 @@
         <h1>📊 {{ page_title }}</h1>
         <div class="nav-links">
           <a href="/logs">Dashboard</a>
-          <a href="/logs/requests">Request Logs</a>
+          <a href="/logs/requests">Request Summary</a>
+          <a href="/logs/requests/all">All Requests</a>
           <a href="/logs/clicks">Click Stats</a>
           <a href="/">Home</a>
         </div>
@@ -122,17 +123,11 @@
         </div>
         <div class="stat-card">
           <h3>Total Requests</h3>
-          <div class="value">
-            {% if requests_by_day %} {{ requests_by_day | length }} {% else %} 0
-            {% endif %}
-          </div>
+          <div class="value">{{ total_requests | default(value=0) }}</div>
         </div>
         <div class="stat-card">
           <h3>Total Clicks</h3>
-          <div class="value">
-            {% if clicks_by_day %} {{ clicks_by_day | length }} {% else %} 0 {%
-            endif %}
-          </div>
+          <div class="value">{{ total_clicks | default(value=0) }}</div>
         </div>
       </div>
 
@@ -145,14 +140,37 @@
               <th>Date</th>
               <th>Total Requests</th>
               <th>Avg Response Time (ms)</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {% for day in requests_by_day %}
             <tr>
-              <td>{{ day._id }}</td>
+              <td>
+                <a
+                  href="/logs/date/{{ day._id }}/details"
+                  style="color: #667eea; text-decoration: none"
+                >
+                  {{ day._id }}
+                </a>
+              </td>
               <td>{{ day.total_requests }}</td>
               <td>{{ day.avg_response_time | round(precision=2) }}</td>
+              <td>
+                <button
+                  onclick="deleteDate('{{ day._id }}')"
+                  style="
+                    background: #dc3545;
+                    color: white;
+                    border: none;
+                    padding: 0.5rem 1rem;
+                    border-radius: 5px;
+                    cursor: pointer;
+                  "
+                >
+                  Delete
+                </button>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -180,5 +198,31 @@
       </div>
       {% endif %}
     </div>
+    <script>
+      async function deleteDate(date) {
+        if (
+          !confirm(`Are you sure you want to delete all logs from ${date}?`)
+        ) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`/logs/date/${date}`, {
+            method: "DELETE",
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            alert(data.message);
+            location.reload();
+          } else {
+            alert("Failed to delete logs: " + data.message);
+          }
+        } catch (error) {
+          alert("Error deleting logs: " + error.message);
+        }
+      }
+    </script>
   </body>
 </html>

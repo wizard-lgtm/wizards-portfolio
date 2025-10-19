@@ -1,10 +1,37 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use mongodb::bson::oid::ObjectId;
+
+// Custom deserializer to handle both string and DateTime formats
+fn deserialize_flexible_datetime<'de, D>(deserializer: D) -> Result<mongodb::bson::DateTime, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum FlexibleDateTime {
+        DateTime(mongodb::bson::DateTime),
+        String(String),
+    }
+    
+    match FlexibleDateTime::deserialize(deserializer)? {
+        FlexibleDateTime::DateTime(dt) => Ok(dt),
+        FlexibleDateTime::String(s) => {
+            // Try to parse the string as an ISO 8601 datetime
+            use chrono::{DateTime, Utc};
+            let parsed: DateTime<Utc> = s.parse()
+                .map_err(|e| Error::custom(format!("Failed to parse datetime string: {}", e)))?;
+            Ok(mongodb::bson::DateTime::from_millis(parsed.timestamp_millis()))
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestLog {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
+    #[serde(deserialize_with = "deserialize_flexible_datetime")]
     pub timestamp: mongodb::bson::DateTime,
     pub request_id: String,
     pub ip_address: String,
@@ -22,6 +49,7 @@ pub struct RequestLog {
 pub struct ClickLog {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
+    #[serde(deserialize_with = "deserialize_flexible_datetime")]
     pub timestamp: mongodb::bson::DateTime,
     pub request_id: String,
     pub ip_address: String,
@@ -35,6 +63,7 @@ pub struct ClickLog {
 pub struct SystemPerformanceLog {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
+    #[serde(deserialize_with = "deserialize_flexible_datetime")]
     pub timestamp: mongodb::bson::DateTime,
     pub render_time_ms: f64,
     pub memory_usage_mb: f64,
